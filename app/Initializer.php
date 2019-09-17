@@ -15,9 +15,7 @@ class Initializer
     public function init()
     {
         $this->loadDotenv();
-        $this->setClientId();
-        $this->setClientSecret();
-        $this->setRedirect();
+        $this->defineConstants();
     }
 
     private function loadDotenv()
@@ -26,18 +24,12 @@ class Initializer
         $this->dotenv->load();
     }
 
-    private function setClientId()
+    private function defineConstants()
     {
+        define('API_KEY', $_ENV['API_KEY']);
         define('CLIENT_ID', $_ENV['OAUTH2_CLIENT_ID']);
-    }
-
-    private function setClientSecret()
-    {
         define('CLIENT_SECRET', $_ENV['OAUTH2_CLIENT_SECRET']);
-    }
-
-    private function setRedirect()
-    {
+        define('SCOPE', $_ENV['SCOPE']);
         define('REDIRECT', $_ENV['REDIRECT']);
     }
 }
