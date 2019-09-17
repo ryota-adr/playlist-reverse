@@ -1,3 +1,5 @@
 /vendor
 .env
 test.php
+test2.php
+indexcp.php
