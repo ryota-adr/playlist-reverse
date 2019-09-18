@@ -9,7 +9,7 @@ class Playlist
     private $title;
     private $description;
     private $id;
-    private $videoIds = [];
+    private $videos = [];
 
     private $client;
     private $youtube;
@@ -18,12 +18,24 @@ class Playlist
     
     public function __construct($playlistId, \Google_Service_YouTube $youtube)
     {
+        $this->setPlaylistId($playlistId);
         $this->youtube = $youtube;
         $this->client = $this->youtube->getClient();
 
         $this->setAccessToken();
 
-        $this->setVideoIds($playlistId);
+        $this->generate();
+        $this->setVideos($playlistId);
+    }
+
+    private function setPlaylistId($playlistId)
+    {
+        $first2str = substr($playlistId, 0, 2);
+        if ($first2str === 'PL') {
+            $this->id = $playlistId;
+        } else if ($first2str === 'UC') {
+            $this->id = 'UU' . substr($playlistId, 2);
+        }
     }
 
     private function setAccessToken()
@@ -45,44 +57,16 @@ class Playlist
         }
     }
 
-    public function getVideoIds()
-    {
-        return $this->videoIds;
-    }
-
-    private function setVideoIds($playlistId)
+    private function generate()
     {
         if ($this->client->getAccessToken()) {
             try {
-                $playlistItemResponse = $this->youtube->playlistItems->listPlaylistItems(
-                    'snippet', [
-                    'playlistId' => $playlistId,
-                    'maxResults' => static::maxResults,
-                ]);
-
-                foreach($playlistItemResponse->getItems() as $item) {
-                    array_push($this->videoIds, $item->getSnippet()->getResourceId()->getVideoId());
-                }
-
-                while($playlistItemResponse->nextPageToken) {
-                    $playlistItemResponse = $this->youtube->playlistItems->listPlaylistItems(
-                        'snippet', [
-                            'playlistId' => $playlistId,
-                            'maxResults' => static::maxResults,
-                            'pageToken' => $playlistItemResponse->nextPageToken,
-                    ]);
-
-                    foreach($playlistItemResponse->getItems() as $item) {
-                        array_push(
-                            $this->videoIds,
-                            $item->getSnippet()->getResourceId()->getVideoId()
-                        );
-                    }
-                }
-            } catch (Google_Service_Exception $e) {
-                $this->html = sprintf('<p>A service error occurred: <code>%s</code></p>',
-                htmlspecialchars($e->getMessage()));
-            } catch (Google_Exception $e) {
+                $this->setVideos($this->sortVideos($this->makeVideoInfoCollection()));
+                dump($this->getVideos());
+                session_destroy();
+            } catch (\Google_Service_Exception $e) {
+                $this->html = $this->errorMessage($e);
+            } catch (\Google_Exception $e) {
                 $this->html = sprintf('<p>An client error occurred: <code>%s</code></p>',
                 htmlspecialchars($e->getMessage()));
             }
@@ -93,23 +77,103 @@ class Playlist
 
             $authUrl = $this->client->createAuthUrl();
             $this->html = <<<END
-<h3>Authorization Required</h3>
-<p>You need to <a href="$authUrl">authorize access</a> before proceeding.<p>
+<div><a href="$authUrl">ログイン</a>が必要です。</div>
 END;
         }
     }
 
+    private function makeVideoInfoCollection()
+    {
+        $playlistId = $this->id;
+        $videos = [];
+
+        if ($playlistId === null) {
+            return [];
+        }
+
+        $playlistItemResponse = $this->youtube->playlistItems->listPlaylistItems(
+            'snippet', [
+            'playlistId' => $playlistId,
+            'maxResults' => static::maxResults,
+        ]);
+
+        foreach($playlistItemResponse->getItems() as $item) {
+            $snippet = $item->getSnippet();
+            array_push($videos, [
+                'publishedAt' => $snippet->publishedAt,
+                'title' => $snippet->title,
+                'videoId' => $snippet->getResourceId()->getVideoId()
+            ]);
+        }
+
+        while($playlistItemResponse->nextPageToken) {
+            $playlistItemResponse = $this->youtube->playlistItems->listPlaylistItems(
+                'snippet', [
+                    'playlistId' => $playlistId,
+                    'maxResults' => static::maxResults,
+                    'pageToken' => $playlistItemResponse->nextPageToken,
+            ]);
+
+            foreach($playlistItemResponse->getItems() as $item) {
+                $snippet = $item->getSnippet();
+                array_push($videos, [
+                    'publishedAt' => $snippet->publishedAt,
+                    'title' => $snippet->title,
+                    'videoId' => $snippet->getResourceId()->getVideoId()
+                ]);
+            }
+        }
+
+        return $videos;
+    }
+
+    public function getVideos()
+    {
+        return $this->videos;
+    }
+
+    private function setVideos($videos)
+    {
+        $this->videos = $videos;
+    }
+
+    private function sortVideos($videos)
+    {
+        if (empty($videos)) {
+            return [];
+        }
+
+        $publishedAts = array_column($videos, 'publishedAt');
+
+        array_multisort($videos, $publishedAts);
+
+        return $videos;
+    }
+
     public function insert()
     {
-        foreach($this->videoIds as $videoId) {
+        foreach($this->videos as $video) {
             
         }
     }
 
-    public function outputHtml()
+    public function getHtml()
     {
         if ($this->html) {
-            echo $this->html;
+            return $this->html;
         }
+    }
+
+    private function errorMessage($e)
+    {
+        $error = json_decode($e->getMessage(), true)['error'];
+
+        if ($error['code'] === 404 && $error['errors'][0]['reason'] === 'playlistNotFound') {
+            $message = 'プレイリストIDかチャンネルIDが間違っています。';
+        } else {
+            $message = 'エラー';
+        }
+
+        return "<div class=\"h4\">$message</div>";
     }
 }
