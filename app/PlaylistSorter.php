@@ -2,40 +2,81 @@
 
 namespace App;
 
-class Playlist
+class PlaylistSorter
 {
     const maxResults = 50;
+    const maxitems = 200;
 
     private $title;
     private $description;
-    private $id;
+    private $originalPlaylistId;
     private $videos = [];
-
+    private $newPlaylist;
+    private $sortMode;
+    private $privacyStatus;
     private $client;
     private $youtube;
 
     private $html;
     
-    public function __construct($playlistId, \Google_Service_YouTube $youtube)
+    public function __construct($urlOrOriginalPlaylistId, $sortMode, $privacyStatus, \Google_Service_YouTube $youtube)
     {
-        $this->setPlaylistId($playlistId);
+        $this->setOriginalPlaylistId($this->url2PlaylistId($urlOrOriginalPlaylistId));
+        $this->sortMode = $sortMode;
+        $this->privacyStatus = $privacyStatus;
         $this->youtube = $youtube;
         $this->client = $this->youtube->getClient();
 
         $this->setAccessToken();
-
-        $this->generate();
-        $this->setVideos($playlistId);
     }
 
-    private function setPlaylistId($playlistId)
-    {
-        $first2str = substr($playlistId, 0, 2);
-        if ($first2str === 'PL') {
-            $this->id = $playlistId;
-        } else if ($first2str === 'UC') {
-            $this->id = 'UU' . substr($playlistId, 2);
+    private function isYoutubeChannelOrPlaylistUrl($urlOrOriginalPlaylistId) {
+        preg_match('/https:\/\/www\.youtube\.com\/(channel|playlist)/', $urlOrOriginalPlaylistId, $match);
+
+        return $match ? true : false;
+    }
+
+    private function url2PlaylistId($urlOrOriginalPlaylistId) {
+        if ($this->isYoutubeChannelOrPlaylistUrl($urlOrOriginalPlaylistId)) {
+            $id = preg_replace(
+                '/https:\/\/www\.youtube\.com\/(channel\/|playlist\?list=)/',
+                '',
+                $urlOrOriginalPlaylistId
+            );
+        } else {
+            $id = $urlOrOriginalPlaylistId;
         }
+
+        if ((substr($id, 0, 2)) === 'UC') {
+            return 'UU' . substr($id, 2);
+        } else {
+            return $id;
+        }
+    }
+
+    private function setOriginalPlaylistId($originalPlaylistId)
+    {
+        $first2str = substr($originalPlaylistId, 0, 2);
+        if ($first2str === 'PL') {
+            $this->originalPlaylistId = $originalPlaylistId;
+        } else if ($first2str === 'UC') {
+            $this->originalPlaylistId = 'UU' . substr($originalPlaylistId, 2);
+        }
+    }
+
+    private function getPlaylistSnippet($playlistId)
+    {
+        return $this->youtube->playlists->listPlaylists('snippet', ['id' => $playlistId])->getItems()[0]->getSnippet();
+    }
+
+    private function setTitle($title)
+    {
+        $this->title = $title;
+    }
+
+    private function setDescription($description)
+    {
+        $this->description = $description;
     }
 
     private function setAccessToken()
@@ -57,15 +98,19 @@ class Playlist
         }
     }
 
-    private function generate()
+    public function work()
     {
         if ($this->client->getAccessToken()) {
             try {
-                $this->setVideos($this->sortVideos($this->makeVideoInfoCollection()));
-                dump($this->getVideos());
+                $playlistSnippet = $this->getPlaylistSnippet($this->originalPlaylistId);
+                $this->setTitle($playlistSnippet->title);
+                $this->setDescription($playlistSnippet->description);
+                $this->setVideos($this->sortVideos($this->makeVideoInfoCollection($this->originalPlaylistId)));
+                $this->makeNewPlaylist($this->title, $this->description);
+
                 session_destroy();
             } catch (\Google_Service_Exception $e) {
-                $this->html = $this->errorMessage($e);
+                $this->html = $this->invalidId($e);
             } catch (\Google_Exception $e) {
                 $this->html = sprintf('<p>An client error occurred: <code>%s</code></p>',
                 htmlspecialchars($e->getMessage()));
@@ -82,9 +127,8 @@ END;
         }
     }
 
-    private function makeVideoInfoCollection()
+    private function makeVideoInfoCollection($playlistId)
     {
-        $playlistId = $this->id;
         $videos = [];
 
         if ($playlistId === null) {
@@ -143,17 +187,26 @@ END;
             return [];
         }
 
-        $publishedAts = array_column($videos, 'publishedAt');
+        if ($this->sortMode === 'oldest') {
+            $publishedAts = array_column($videos, 'publishedAt');
 
-        array_multisort($videos, $publishedAts);
+            array_multisort($videos, $publishedAts);
+        }
 
         return $videos;
+    }
+
+    private function makeNewPlaylist($title, $description)
+    {
+        $playlistSnippet = new \Google_Service_YouTube_PlaylistSnippet();
+        $playlistSnippet->setTitle($title);
+        $playlistSnippet->setDescription($description);
     }
 
     public function insert()
     {
         foreach($this->videos as $video) {
-            
+
         }
     }
 
@@ -164,12 +217,12 @@ END;
         }
     }
 
-    private function errorMessage($e)
+    private function invalidId($e)
     {
         $error = json_decode($e->getMessage(), true)['error'];
 
         if ($error['code'] === 404 && $error['errors'][0]['reason'] === 'playlistNotFound') {
-            $message = 'プレイリストIDかチャンネルIDが間違っています。';
+            $message = $this->originalPlaylistId . ' URLかIDが間違っています。';
         } else {
             $message = 'エラー';
         }
