@@ -1,6 +1,5 @@
 {
     "require": {
-        "google/apiclient": "2.0",
         "vlucas/phpdotenv": "^3.6",
         "symfony/var-dumper": "^4.3"
     },
