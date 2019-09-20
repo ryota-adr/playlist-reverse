@@ -26,7 +26,8 @@ class Initializer
 
     private function defineConstants()
     {
-        define('API_KEY', $_ENV['API_KEY']);
+        define('APP_ENV', $_ENV['APP_ENV']);
+        define('APP_HOST', $_ENV['APP_HOST']);
         define('CLIENT_ID', $_ENV['OAUTH2_CLIENT_ID']);
         define('CLIENT_SECRET', $_ENV['OAUTH2_CLIENT_SECRET']);
         define('SCOPE', $_ENV['SCOPE']);
