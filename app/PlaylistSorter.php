@@ -5,13 +5,13 @@ namespace App;
 class PlaylistSorter
 {
     const maxResults = 50;
-    const maxitems = 200;
+    const maxItems = 200;
 
     private $title;
     private $description;
     private $originalPlaylistId;
     private $videos = [];
-    private $newPlaylist;
+    private $newPlaylistIds = [];
     private $sortMode;
     private $privacyStatus;
     private $client;
@@ -88,9 +88,9 @@ class PlaylistSorter
 
             $this->client->authenticate($_GET['code']);
             $_SESSION['token'] = $this->client->getAccessToken();
-            if (headers_sent()) {
-                header('Location: ' . REDIRECT);
-            }
+            
+            header('Location: ' . REDIRECT);
+            exit();
         }
 
         if (isset($_SESSION['token'])) {
@@ -105,16 +105,50 @@ class PlaylistSorter
                 $playlistSnippet = $this->getPlaylistSnippet($this->originalPlaylistId);
                 $this->setTitle($playlistSnippet->title);
                 $this->setDescription($playlistSnippet->description);
-                $this->setVideos($this->sortVideos($this->makeVideoInfoCollection($this->originalPlaylistId)));
-                $this->makeNewPlaylist($this->title, $this->description);
+                $this->setVideos(
+                    $this->chunkVideos(
+                        $this->sortVideos(
+                            $this->makeVideoInfoCollection($this->originalPlaylistId)
+                        ), static::maxItems
+                    )
+                );
 
-                session_destroy();
+                $this->newPlaylistIds = $this->insertNewPlaylist(
+                    $this->title, $this->description);
+                
+                $this->insertVideos($this->newPlaylistIds, $this->videos);
+
+                $count = count($this->newPlaylistIds);
+                if ($count === 1) {
+                    $playlistId = $this->newPlaylistIds[0];
+                    $this->html =<<<END
+<div class="h5 text-center">
+    <a href="https://www.youtube.com/playlist?list=$playlistId">
+        新しいプレイリスト
+    </a>
+</div>
+END;
+                } else {
+                    $atags = '';
+                    for($i = 0; $i < $count; $i++) {
+                        $atags .= '<a href="https://www.youtube.com/playlist?list=' . 
+                            $this->newPlaylistIds[$i] . '">' . ($i + 1) . ' </a>';
+                    }
+
+                    $this->html =<<<END
+<div class="h5 text-center">
+    <span>新しいプレイリスト </span>$atags
+</div>
+END;
+                }
             } catch (\Google_Service_Exception $e) {
-                $this->html = $this->invalidId($e);
+                $this->html = $this->errorMessage($e);
             } catch (\Google_Exception $e) {
                 $this->html = sprintf('<p>An client error occurred: <code>%s</code></p>',
                 htmlspecialchars($e->getMessage()));
             }
+
+            session_destroy();
         } else {
             $state = mt_rand();
             $this->client->setState($state);
@@ -122,7 +156,7 @@ class PlaylistSorter
 
             $authUrl = $this->client->createAuthUrl();
             $this->html = <<<END
-<div><a href="$authUrl">ログイン</a>が必要です。</div>
+<div class="h5 text-center"><a href="$authUrl">ログイン</a>が必要です。</div>
 END;
         }
     }
@@ -146,7 +180,7 @@ END;
             array_push($videos, [
                 'publishedAt' => $snippet->publishedAt,
                 'title' => $snippet->title,
-                'videoId' => $snippet->getResourceId()->getVideoId()
+                'id' => $snippet->getResourceId()->getVideoId()
             ]);
         }
 
@@ -181,6 +215,11 @@ END;
         $this->videos = $videos;
     }
 
+    private function chunkVideos($videos, $size)
+    {
+        return array_chunk($videos, $size);
+    }
+
     private function sortVideos($videos)
     {
         if (empty($videos)) {
@@ -196,17 +235,50 @@ END;
         return $videos;
     }
 
-    private function makeNewPlaylist($title, $description)
+    private function insertNewPlaylist($title, $description)
     {
-        $playlistSnippet = new \Google_Service_YouTube_PlaylistSnippet();
-        $playlistSnippet->setTitle($title);
-        $playlistSnippet->setDescription($description);
+        $count = count($this->videos);
+        $newPlaylistIds = [];
+
+        for($i = 0; $i < $count; $i++) {
+            $playlistSnippet = new \Google_Service_YouTube_PlaylistSnippet();
+            $playlistSnippet->setTitle($title);
+            $playlistSnippet->setDescription($description);
+
+            $playlistStatus = new \Google_Service_YouTube_PlaylistStatus();
+            $playlistStatus->setPrivacyStatus($this->privacyStatus);
+
+            $youTubePlaylist = new \Google_Service_YouTube_Playlist();
+            $youTubePlaylist->setSnippet($playlistSnippet);
+            $youTubePlaylist->setStatus($playlistStatus);
+
+            array_push($newPlaylistIds, $this->youtube->playlists->insert('snippet,status', $youTubePlaylist, [])['id']);
+        }
+
+        return $newPlaylistIds;
     }
 
-    public function insert()
+    public function insertVideos($playlistIds, $videos)
     {
-        foreach($this->videos as $video) {
+        $count = count($playlistIds);
+        for($i = 0; $i < $count; $i++) {
+            foreach($videos[$i] as $video) {
+                $resourceId = new \Google_Service_YouTube_ResourceId();
+                $resourceId->setVideoId($video['id']);
+                $resourceId->setKind('youtube#video');
 
+                $playlistItemSnippet = new \Google_Service_YouTube_PlaylistItemSnippet();
+                $playlistItemSnippet->setTitle($count > 1 ? 
+                    $video['title'] . '-' . ($i + 1) :
+                    $video['title']);
+                $playlistItemSnippet->setPlaylistId($playlistIds[$i]);
+                $playlistItemSnippet->setResourceId($resourceId);
+
+                $playlistItem = new \Google_Service_YouTube_PlaylistItem();
+                $playlistItem->setSnippet($playlistItemSnippet);
+                $playlistItemResponse = $this->youtube->playlistItems->insert(
+                'snippet,contentDetails', $playlistItem, []);
+            }
         }
     }
 
@@ -217,14 +289,16 @@ END;
         }
     }
 
-    private function invalidId($e)
+    private function errorMessage($e)
     {
         $error = json_decode($e->getMessage(), true)['error'];
 
-        if ($error['code'] === 404 && $error['errors'][0]['reason'] === 'playlistNotFound') {
+        if (APP_ENV === 'local') {
+            $message = $e->getMessage();
+        } else if ($error['code'] === 404 && $error['errors'][0]['reason'] === 'playlistNotFound') {
             $message = $this->originalPlaylistId . ' URLかIDが間違っています。';
-        } else {
-            $message = 'エラー';
+        } else if ($error['code'] === 403 && $error['errors'][0]['reason'] === 'exceededRateLimit') {
+            $message = 'API制限です。時間をおいて利用してください。';
         }
 
         return "<div class=\"h4\">$message</div>";
