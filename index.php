@@ -59,20 +59,40 @@ if (isset($_SESSION['playlistId'])) {
                                         $playlistId = '';
                                     }
                                     echo $playlistId;
-                                    ?>">
+                                    ?>" required>
                                 </div>
                             </div>
                             <div class="row">
                                 <div class="col-4 pr-0">
                                     <div class="form-group">
-                                        <select name="sortMode" class="form-control">   
-                                            <option value="popular">
+                                        <select name="sortMode" class="form-control">
+                                            <?php
+                                            if (isset($playlistSorter)) {
+                                                $sortMode = $playlistSorter->getSortMode();
+                                            }
+                                            $popularSelected = '';
+                                            $newestSelected = '';
+                                            $oldestSelected = '';
+
+                                            if (isset($sortMode)) {
+                                                if ($sortMode === 'popular') {
+                                                    $popularSelected = 'selected';
+                                                } else if ($sortMode === 'newest') {
+                                                    $newestSelected = 'selected';
+                                                } else if ($sortMode === 'oldest') {
+                                                    $oldestSelected = 'selected';
+                                                }
+                                            } else {
+                                                $oldestSelected = 'selected';
+                                            }
+                                            ?>
+                                            <option value="popular" <?php echo $popularSelected; ?>>
                                                 人気順
                                             </option>
-                                            <option value="newest">
+                                            <option value="newest" <?php echo $newestSelected; ?>>
                                                 新しい順
                                             </option>
-                                            <option value="oldest" selected>
+                                            <option value="oldest" <?php echo $oldestSelected; ?>>
                                                 古い順
                                             </option>
                                         </select>
@@ -81,13 +101,33 @@ if (isset($_SESSION['playlistId'])) {
                                 <div class="col-4 pr-0">
                                     <div class="form-group">
                                         <select name="privacyStatus" class="form-control">
-                                            <option value="public">
+                                            <?php
+                                            if (isset($playlistSorter)) {
+                                                $privacyStatus = $playlistSorter->getPrivacyStatus();
+                                            }
+                                            $publicSelected = '';
+                                            $unlistedSelected = '';
+                                            $privateSelected = '';
+                                            
+                                            if (isset($privacyStatus)) {
+                                                if ($privacyStatus === 'public') {
+                                                    $publicSelected = 'selected';
+                                                } else if ($privacyStatus === 'unlisted') {
+                                                    $unlistedSelected = 'selected';
+                                                } else if ($privacyStatus === 'private') {
+                                                    $privateSelected = 'selected';
+                                                }
+                                            } else {
+                                                $privateSelected = 'selected';
+                                            }
+                                            ?>
+                                            <option value="public" <?php echo $publicSelected; ?>>
                                                 公開
                                             </option>
-                                            <option value="unlisted">
+                                            <option value="unlisted" <?php echo $unlistedSelected; ?>>
                                                 限定公開
                                             </option>
-                                            <option value="private" selected>
+                                            <option value="private" <?php echo $privateSelected; ?>>
                                                 非公開
                                             </option>
                                         </select>
