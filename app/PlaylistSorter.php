@@ -79,6 +79,16 @@ class PlaylistSorter
         $this->description = $description;
     }
 
+    public function getSortMode()
+    {
+        return isset($this->sortMode) ? $this->sortMode : null;
+    }
+
+    public function getPrivacyStatus()
+    {
+        return isset($this->privacyStatus) ?  $this->privacyStatus : null;
+    }
+
     private function setAccessToken()
     {
         if (isset($_GET['code'])) {
@@ -177,10 +187,12 @@ END;
 
         foreach($playlistItemResponse->getItems() as $item) {
             $snippet = $item->getSnippet();
+            $videoId = $snippet->getResourceId()->getVideoId();
             array_push($videos, [
                 'publishedAt' => $snippet->publishedAt,
                 'title' => $snippet->title,
-                'id' => $snippet->getResourceId()->getVideoId()
+                'id' => $videoId,
+                'viewCount' => (int)($this->youtube->videos->listVideos('statistics', ['id' => $videoId])['items'][0]['statistics']['viewCount'])
             ]);
         }
 
@@ -227,9 +239,17 @@ END;
         }
 
         if ($this->sortMode === 'oldest') {
-            $publishedAts = array_column($videos, 'publishedAt');
-
-            array_multisort($videos, $publishedAts);
+            usort($videos, function($a, $b) {
+                return $a['publishedAt'] < $b['publishedAt'] ? -1 : 1;
+            });
+        } else if ($this->sortMode === 'newest') {
+            usort($videos, function($a, $b) {
+                return $a['publishedAt'] > $b['publishedAt'] ? -1 : 1;
+            });
+        } else if ($this->sortMode === 'popular') {
+            usort($videos, function($a, $b) {
+                return $a['viewCount'] > $b['viewCount'] ? -1 : 1;
+            });
         }
 
         return $videos;
