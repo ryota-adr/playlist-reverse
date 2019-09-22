@@ -1,7 +1,6 @@
 /vendor
 /google-api-php-client-2.4.0
-.env
-.env.prod
+defines.php
 test.php
 test2.php
 indexcp.php
