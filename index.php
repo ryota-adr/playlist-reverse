@@ -1,14 +1,11 @@
 <?php
+require_once('defines.php');
 require_once('vendor/autoload.php');
 require_once('google-api-php-client-2.4.0/vendor/autoload.php');
 
-use App\Initializer;
 use App\PlaylistSorter;
 
 session_start();
-
-$initializer = new Initializer(__DIR__);
-$initializer->init();
 
 if (isset($_GET['playlistId']) && isset($_GET['sortMode']) && isset($_GET['privacyStatus'])) {
     $_SESSION['playlistId'] = $_GET['playlistId'];
