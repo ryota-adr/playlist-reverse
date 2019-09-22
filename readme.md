@@ -1,8 +1,8 @@
-### Playlist Sorter
+# Playlist Sorter
 
 [demo](http://ryota01.com/playlist-sorter)
 
-#### 使い方
+### 使い方
 
 git cloneまたはレポジトリをダウンロードする。  
 [https://github.com/googleapis/google-api-php-client/releases](https://github.com/googleapis/google-api-php-client/releases)からgoogle-api-php-client-2.4.0.zip
@@ -13,4 +13,4 @@ git cloneまたはレポジトリをダウンロードする。
 composer install
 ```
 
-.env.sampleを編集して名前を.envに変更
+defines.sample.phpを必要事項を記入して名前をdefines.phpに変更。
