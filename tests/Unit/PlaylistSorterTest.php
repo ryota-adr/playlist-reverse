@@ -17,4 +17,17 @@ class PlaylistSorterTest extends TestCase
         $this->assertSame($playlistSorter->getSortMode(), $sortMode);
         $this->assertSame($playlistSorter->getPrivacyStatus(), $privacyStatus);
     }
+
+    public function testGetLink()
+    {
+        $sortMode = 'popular';
+        $privacyStatus = 'public';
+        $playlistSorter = new PlaylistSorter('testPlaylistId', $sortMode, $privacyStatus, youtubeFactory(CLIENT_ID, CLIENT_SECRET, SCOPE, REDIRECT));
+
+        $playlistSorter->work();
+        $html = $playlistSorter->getHtml();
+
+        preg_match('/ログイン/', $html, $match);
+        $this->assertSame($match[0], 'ログイン');
+    }
 }
