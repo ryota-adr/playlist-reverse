@@ -21,7 +21,7 @@ class PlaylistSorter
     
     public function __construct($urlOrOriginalPlaylistId, $sortMode, $privacyStatus, \Google_Service_YouTube $youtube)
     {
-        $this->setOriginalPlaylistId($this->url2PlaylistId($urlOrOriginalPlaylistId));
+        $this->originalPlaylistId = $this->url2PlaylistId($urlOrOriginalPlaylistId);
         $this->sortMode = $sortMode;
         $this->privacyStatus = $privacyStatus;
         $this->youtube = $youtube;
@@ -54,29 +54,9 @@ class PlaylistSorter
         }
     }
 
-    private function setOriginalPlaylistId($originalPlaylistId)
-    {
-        $first2str = substr($originalPlaylistId, 0, 2);
-        if ($first2str === 'PL') {
-            $this->originalPlaylistId = $originalPlaylistId;
-        } else if ($first2str === 'UC') {
-            $this->originalPlaylistId = 'UU' . substr($originalPlaylistId, 2);
-        }
-    }
-
     private function getPlaylistSnippet($playlistId)
     {
         return $this->youtube->playlists->listPlaylists('snippet', ['id' => $playlistId])->getItems()[0]->getSnippet();
-    }
-
-    private function setTitle($title)
-    {
-        $this->title = $title;
-    }
-
-    private function setDescription($description)
-    {
-        $this->description = $description;
     }
 
     public function getSortMode()
@@ -113,15 +93,14 @@ class PlaylistSorter
         if ($this->client->getAccessToken()) {
             try {
                 $playlistSnippet = $this->getPlaylistSnippet($this->originalPlaylistId);
-                $this->setTitle($playlistSnippet->title);
-                $this->setDescription($playlistSnippet->description);
-                $this->setVideos(
-                    $this->chunkVideos(
+
+                $this->title = $playlistSnippet->title;
+                $this->description = $playlistSnippet->description;
+                $this->videos = $this->chunkVideos(
                         $this->sortVideos(
                             $this->makeVideoInfoCollection($this->originalPlaylistId)
                         ), static::maxItems
-                    )
-                );
+                    );
 
                 $this->newPlaylistIds = $this->insertNewPlaylist(
                     $this->title, $this->description);
@@ -206,10 +185,12 @@ END;
 
             foreach($playlistItemResponse->getItems() as $item) {
                 $snippet = $item->getSnippet();
+                $videoId = $snippet->getResourceId()->getVideoId();
                 array_push($videos, [
                     'publishedAt' => $snippet->publishedAt,
                     'title' => $snippet->title,
-                    'videoId' => $snippet->getResourceId()->getVideoId()
+                    'id' => $videoId,
+                    'viewCount' => (int)($this->youtube->videos->listVideos('statistics', ['id' => $videoId])['items'][0]['statistics']['viewCount'])
                 ]);
             }
         }
@@ -220,11 +201,6 @@ END;
     public function getVideos()
     {
         return $this->videos;
-    }
-
-    private function setVideos($videos)
-    {
-        $this->videos = $videos;
     }
 
     private function chunkVideos($videos, $size)
@@ -262,7 +238,7 @@ END;
 
         for($i = 0; $i < $count; $i++) {
             $playlistSnippet = new \Google_Service_YouTube_PlaylistSnippet();
-            $playlistSnippet->setTitle($title);
+            $playlistSnippet->setTitle($title . '-' . ($i + 1));
             $playlistSnippet->setDescription($description);
 
             $playlistStatus = new \Google_Service_YouTube_PlaylistStatus();
@@ -304,23 +280,26 @@ END;
 
     public function getHtml()
     {
-        if ($this->html) {
-            return $this->html;
-        }
+        return isset($this->html) ? $this->html : '';
     }
 
     private function errorMessage($e)
     {
         $error = json_decode($e->getMessage(), true)['error'];
+        $errors = $error['errors'][0];
+
+        $message = 
+            '<span class="h4">Error</span><br>' .
+            'code: ' . $error['code'] . '<br>' .
+            'domain: ' . $errors['domain'] . '<br>' .
+            'reason: ' . $errors['reason'] . '<br>' .
+            'message: ' . $errors['message'] . '<br>';
 
         if (APP_ENV === 'local') {
-            $message = $e->getMessage();
-        } else if ($error['code'] === 404 && $error['errors'][0]['reason'] === 'playlistNotFound') {
-            $message = $this->originalPlaylistId . ' URLかIDが間違っています。';
-        } else if ($error['code'] === 403 && $error['errors'][0]['reason'] === 'exceededRateLimit') {
-            $message = 'API制限です。時間をおいて利用してください。';
+            $message .= $this->originalPlaylistId . '<br>';
+            $message .= APP_ENV . '<br>';
         }
 
-        return "<div class=\"h4\">$message</div>";
+        return "<div>$message</div>";
     }
 }
