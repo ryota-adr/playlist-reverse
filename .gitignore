@@ -1,3 +1,4 @@
+/coverage
 /vendor
 /google-api-php-client-2.4.0
 .phpunit.result.cache
